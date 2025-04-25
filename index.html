@@ -1,11 +1,12 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>运动健康评估</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="app.js" defer></script>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
@@ -39,6 +40,18 @@
             transform: scale(1.05);
             background: linear-gradient(to right, #60A5FA, #38BDF8);
         }
+        .btn-copy {
+            background: linear-gradient(to right, #34D399, #6EE7B7);
+        }
+        .btn-copy:hover {
+            background: linear-gradient(to right, #6EE7B7, #34D399);
+        }
+        .btn-pdf {
+            background: linear-gradient(to right, #F97316, #FBBF24);
+        }
+        .btn-pdf:hover {
+            background: linear-gradient(to right, #FBBF24, #F97316);
+        }
         .fade-in {
             animation: fadeIn 0.5s ease-in-out;
         }
@@ -59,158 +72,409 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+        .invalid {
+            border-color: #EF4444 !important;
+        }
+        .error-message {
+            color: #EF4444;
+            font-size: 0.875rem;
+            margin-top: 0.25rem;
+        }
+        .copy-feedback {
+            transition: opacity 0.3s ease;
+        }
+        .sidebar {
+            transition: transform 0.3s ease;
+        }
+        .sidebar-hidden {
+            transform: translateX(-100%);
+        }
+        @media (max-width: 768px) {
+            .sidebar {
+                position: fixed;
+                z-index: 50;
+                transform: translateX(-100%);
+            }
+            .sidebar-open {
+                transform: translateX(0);
+            }
+        }
+        #surveyModal {
+            z-index: 100;
+        }
     </style>
 </head>
-<body class="min-h-screen flex flex-col">
+<body class="min-h-screen flex">
     <!-- 粒子背景 -->
     <canvas class="particle-bg"></canvas>
 
-    <!-- 导航栏 -->
-    <nav class="bg-white shadow-md py-4 px-6 flex justify-between items-center">
-        <div class="flex items-center space-x-2">
-            <svg class="w-8 h-8 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
-            </svg>
-            <h1 class="text-2xl font-bold text-gray-800">运动健康评估</h1>
+    <!-- 侧边栏 -->
+    <div id="sidebar" class="sidebar w-64 bg-white shadow-lg h-screen fixed top-0 left-0 z-40 md:static md:translate-x-0">
+        <div class="p-6">
+            <h2 class="text-xl font-bold text-gray-800 mb-6">健康管理平台</h2>
+            <nav class="space-y-2">
+                <button onclick="showPage('profile')" class="w-full text-left p-3 rounded-lg hover:bg-sky-100 text-gray-700">身份信息上传</button>
+                <button onclick="showPage('assessment')" class="w-full text-left p-3 rounded-lg hover:bg-sky-100 text-gray-700">健康评估</button>
+                <button onclick="showPage('knowledge')" class="w-full text-left p-3 rounded-lg hover:bg-sky-100 text-gray-700">运动知识</button>
+                <button onclick="showPage('records')" class="w-full text-left p-3 rounded-lg hover:bg-sky-100 text-gray-700">身体信息管理</button>
+            </nav>
         </div>
-        <button onclick="location.reload()" class="text-sky-600 hover:underline">重新评估</button>
-    </nav>
+    </div>
+
+    <!-- 侧边栏切换按钮（移动端） -->
+    <button id="sidebarToggle" class="md:hidden fixed top-4 left-4 z-50 text-sky-600">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+        </svg>
+    </button>
 
     <!-- 主内容 -->
-    <div class="flex-grow flex items-center justify-center p-6">
-        <div class="max-w-5xl w-full bg-white rounded-2xl shadow-2xl p-8">
-            <!-- 输入表单 -->
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                <div>
-                    <label class="block mb-2 text-sm font-medium text-gray-700">年龄</label>
-                    <input id="age" type="number" class="w-full p-3 border rounded-lg shadow-sm focus:ring-2 focus:ring-sky-400 focus:outline-none" placeholder="例如：25">
+    <div class="flex-grow flex flex-col">
+        <!-- 导航栏 -->
+        <nav class="bg-white shadow-md py-4 px-6 flex justify-between items-center">
+            <div class="flex items-center space-x-2">
+                <svg class="w-8 h-8 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                </svg>
+                <h1 class="text-2xl font-bold text-gray-800">运动健康评估</h1>
+            </div>
+            <button onclick="resetApp()" class="text-sky-600 hover:underline">重新评估</button>
+        </nav>
+
+        <!-- 页面容器 -->
+        <div class="flex-grow p-6">
+            <!-- 身份信息上传 -->
+            <div id="profilePage" class="hidden max-w-5xl mx-auto bg-white rounded-2xl shadow-2xl p-8">
+                <h2 class="text-2xl font-semibold mb-6 text-gray-800">身份信息上传</h2>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                    <div>
+                        <label for="profileAge" class="block mb-2 text-sm font-medium text-gray-700">年龄</label>
+                        <input id="profileAge" type="number" aria-describedby="profileAge-error" class="w-full p-3 border rounded-lg shadow-sm focus:ring-2 focus:ring-sky-400 focus:outline-none" placeholder="例如：25" min="10" max="100" oninput="validateInput(this)">
+                        <p id="profileAge-error" class="error-message hidden"></p>
+                    </div>
+                    <div>
+                        <label for="profileGender" class="block mb-2 text-sm font-medium text-gray-700">性别</label>
+                        <select id="profileGender" class="w-full p-3 border rounded-lg shadow-sm focus:ring-2 focus:ring-sky-400 focus:outline-none" aria-label="选择性别">
+                            <option value="male">男</option>
+                            <option value="female">女</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="profileHeight" class="block mb-2 text-sm font-medium text-gray-700">身高 (cm)</label>
+                        <input id="profileHeight" type="number" aria-describedby="profileHeight-error" class="w-full p-3 border rounded-lg shadow-sm focus:ring-2 focus:ring-sky-400 focus:outline-none" placeholder="例如：175" min="100" max="250" oninput="validateInput(this)">
+                        <p id="profileHeight-error" class="error-message hidden"></p>
+                    </div>
+                    <div>
+                        <label for="profileWeight" class="block mb-2 text-sm font-medium text-gray-700">体重 (kg)</label>
+                        <input id="profileWeight" type="number" aria-describedby="profileWeight-error" class="w-full p-3 border rounded-lg shadow-sm focus:ring-2 focus:ring-sky-400 focus:outline-none" placeholder="例如：70" min="30" max="200" oninput="validateInput(this)">
+                        <p id="profileWeight-error" class="error-message hidden"></p>
+                    </div>
+                    <div>
+                        <label for="profileExerciseFreq" class="block mb-2 text-sm font-medium text-gray-700">每周运动频率 (次)</label>
+                        <input id="profileExerciseFreq" type="number" aria-describedby="profileExerciseFreq-error" class="w-full p-3 border rounded-lg shadow-sm focus:ring-2 focus:ring-sky-400 focus:outline-none" placeholder="例如：3" min="0" max="7" oninput="validateInput(this)">
+                        <p id="profileExerciseFreq-error" class="error-message hidden"></p>
+                    </div>
+                    <div>
+                        <label for="profileGoal" class="block mb-2 text-sm font-medium text-gray-700">目标</label>
+                        <select id="profileGoal" class="w-full p-3 border rounded-lg shadow-sm focus:ring-2 focus:ring-sky-400 focus:outline-none" aria-label="选择健身目标">
+                            <option value="fatLoss">减脂</option>
+                            <option value="muscleGain">增肌</option>
+                            <option value="endurance">提高耐力</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="profileHeartRate" class="block mb-2 text-sm font-medium text-gray-700">心率 (次/分钟)</label>
+                        <input id="profileHeartRate" type="number" aria-describedby="profileHeartRate-error" class="w-full p-3 border rounded-lg shadow-sm focus:ring-2 focus:ring-sky-400 focus:outline-none" placeholder="例如：70" min="30" max="200" oninput="validateInput(this)">
+                        <p id="profileHeartRate-error" class="error-message hidden"></p>
+                    </div>
+                    <div>
+                        <label for="profileBloodPressure" class="block mb-2 text-sm font-medium text-gray-700">血压 (收缩压/舒张压, mmHg)</label>
+                        <input id="profileBloodPressure" type="text" aria-describedby="profileBloodPressure-error" class="w-full p-3 border rounded-lg shadow-sm focus:ring-2 focus:ring-sky-400 focus:outline-none" placeholder="例如：120/80" oninput="validateInput(this)">
+                        <p id="profileBloodPressure-error" class="error-message hidden"></p>
+                    </div>
                 </div>
-                <div>
-                    <label class="block mb-2 text-sm font-medium text-gray-700">性别</label>
-                    <select id="gender" class="w-full p-3 border rounded-lg shadow-sm focus:ring-2 focus:ring-sky-400 focus:outline-none">
-                        <option value="male">男</option>
-                        <option value="female">女</option>
-                    </select>
+                <button onclick="saveProfile()" class="btn-primary w-full text-white p-3 rounded-lg shadow-md">保存信息</button>
+            </div>
+
+            <!-- 健康评估 -->
+            <div id="assessmentPage" class="max-w-5xl mx-auto bg-white rounded-2xl shadow-2xl p-8">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                    <div>
+                        <label for="age" class="block mb-2 text-sm font-medium text-gray-700">年龄</label>
+                        <input id="age" type="number" aria-describedby="age-error" class="w-full p-3 border rounded-lg shadow-sm focus:ring-2 focus:ring-sky-400 focus:outline-none" placeholder="例如：25" min="10" max="100" oninput="validateInput(this)">
+                        <p id="age-error" class="error-message hidden"></p>
+                    </div>
+                    <div>
+                        <label for="gender" class="block mb-2 text-sm font-medium text-gray-700">性别</label>
+                        <select id="gender" class="w-full p-3 border rounded-lg shadow-sm focus:ring-2 focus:ring-sky-400 focus:outline-none" aria-label="选择性别">
+                            <option value="male">男</option>
+                            <option value="female">女</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="height" class="block mb-2 text-sm font-medium text-gray-700">身高 (cm)</label>
+                        <input id="height" type="number" aria-describedby="height-error" class="w-full p-3 border rounded-lg shadow-sm focus:ring-2 focus:ring-sky-400 focus:outline-none" placeholder="例如：175" min="100" max="250" oninput="validateInput(this)">
+                        <p id="height-error" class="error-message hidden"></p>
+                    </div>
+                    <div>
+                        <label for="weight" class="block mb-2 text-sm font-medium text-gray-700">体重 (kg)</label>
+                        <input id="weight" type="number" aria-describedby="weight-error" class="w-full p-3 border rounded-lg shadow-sm focus:ring-2 focus:ring-sky-400 focus:outline-none" placeholder="例如：70" min="30" max="200" oninput="validateInput(this)">
+                        <p id="weight-error" class="error-message hidden"></p>
+                    </div>
+                    <div>
+                        <label for="exerciseFreq" class="block mb-2 text-sm font-medium text-gray-700">每周运动频率 (次)</label>
+                        <input id="exerciseFreq" type="number" aria-describedby="exerciseFreq-error" class="w-full p-3 border rounded-lg shadow-sm focus:ring-2 focus:ring-sky-400 focus:outline-none" placeholder="例如：3" min="0" max="7" oninput="validateInput(this)">
+                        <p id="exerciseFreq-error" class="error-message hidden"></p>
+                    </div>
+                    <div>
+                        <label for="sedentaryHours" class="block mb-2 text-sm font-medium text-gray-700">每日久坐时间 (小时)</label>
+                        <input id="sedentaryHours" type="number" aria-describedby="sedentaryHours-error" class="w-full p-3 border rounded-lg shadow-sm focus:ring-2 focus:ring-sky-400 focus:outline-none" placeholder="例如：8" min="0" max="24" oninput="validateInput(this)">
+                        <p id="sedentaryHours-error" class="error-message hidden"></p>
+                    </div>
+                    <div>
+                        <label for="goal" class="block mb-2 text-sm font-medium text-gray-700">目标</label>
+                        <select id="goal" class="w-full p-3 border rounded-lg shadow-sm focus:ring-2 focus:ring-sky-400 focus:outline-none" aria-label="选择健身目标">
+                            <option value="fatLoss">减脂</option>
+                            <option value="muscleGain">增肌</option>
+                            <option value="endurance">提高耐力</option>
+                        </select>
+                    </div>
                 </div>
-                <div>
-                    <label class="block mb-2 text-sm font-medium text-gray-700">身高 (cm)</label>
-                    <input id="height" type="number" class="w-full p-3 border rounded-lg shadow-sm focus:ring-2 focus:ring-sky-400 focus:outline-none" placeholder="例如：175">
+                <button onclick="calculate()" class="btn-primary w-full text-white p-3 rounded-lg shadow-md">计算</button>
+
+                <!-- 加载动画 -->
+                <div id="loading" class="hidden mt-6">
+                    <div class="loading-spinner"></div>
+                    <p class="text-center text-gray-600 mt-2">正在生成报告...</p>
                 </div>
-                <div>
-                    <label class="block mb-2 text-sm font-medium text-gray-700">体重 (kg)</label>
-                    <input id="weight" type="number" class="w-full p-3 border rounded-lg shadow-sm focus:ring-2 focus:ring-sky-400 focus:outline-none" placeholder="例如：70">
-                </div>
-                <div>
-                    <label class="block mb-2 text-sm font-medium text-gray-700">每周运动频率 (次)</label>
-                    <input id="exerciseFreq" type="number" class="w-full p-3 border rounded-lg shadow-sm focus:ring-2 focus:ring-sky-400 focus:outline-none" placeholder="例如：3">
-                </div>
-                <div>
-                    <label class="block mb-2 text-sm font-medium text-gray-700">目标</label>
-                    <select id="goal" class="w-full p-3 border rounded-lg shadow-sm focus:ring-2 focus:ring-sky-400 focus:outline-none">
-                        <option value="fatLoss">减脂</option>
-                        <option value="muscleGain">增肌</option>
-                        <option value="endurance">提高耐力</option>
-                    </select>
+
+                <!-- 输出区域 -->
+                <div id="result" class="mt-8 hidden">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-2xl font-semibold text-gray-800">评估报告</h2>
+                        <div class="flex items-center space-x-2">
+                            <button onclick="copyReport()" class="btn-copy text-white p-2 rounded-lg shadow-md">复制报告</button>
+                            <button onclick="exportPDF()" class="btn-pdf text-white p-2 rounded-lg shadow-md">导出为 PDF</button>
+                            <p id="copyFeedback" class="copy-feedback text-green-500 opacity-0">已复制到剪贴板！</p>
+                        </div>
+                    </div>
+                    <div class="space-y-6">
+                        <!-- 身体状态 -->
+                        <div class="card bg-white p-6 rounded-lg shadow-sm fade-in">
+                            <h3 class="text-lg font-medium mb-4 text-gray-700 flex items-center">
+                                <svg class="w-5 h-5 mr-2 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                </svg>
+                                身体状态
+                            </h3>
+                            <div id="bodyOutput" class="text-gray-600 whitespace-pre-wrap"></div>
+                        </div>
+                        <!-- 基础能量消耗 -->
+                        <div class="card bg-white p-6 rounded-lg shadow-sm fade-in">
+                            <h3 class="text-lg font-medium mb-4 text-gray-700 flex items-center">
+                                <svg class="w-5 h-5 mr-2 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                                </svg>
+                                基础能量消耗
+                            </h3>
+                            <div id="energyOutput" class="text-gray-600 whitespace-pre-wrap"></div>
+                        </div>
+                        <!-- 生活习惯分析 -->
+                        <div class="card bg-white p-6 rounded-lg shadow-sm fade-in">
+                            <h3 class="text-lg font-medium mb-4 text-gray-700 flex items-center">
+                                <svg class="w-5 h-5 mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                </svg>
+                                生活习惯分析
+                            </h3>
+                            <div id="lifestyleOutput" class="text-gray-600 whitespace-pre-wrap"></div>
+                        </div>
+                        <!-- 运动风险分析 -->
+                        <div class="card bg-white p-6 rounded-lg shadow-sm fade-in">
+                            <h3 class="text-lg font-medium mb-4 text-gray-700 flex items-center">
+                                <svg class="w-5 h-5 mr-2 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                                </svg>
+                                运动风险分析
+                            </h3>
+                            <div id="riskOutput" class="text-gray-600"></div>
+                        </div>
+                        <!-- 训练计划 -->
+                        <div class="card bg-white p-6 rounded-lg shadow-sm fade-in">
+                            <h3 class="text-lg font-medium mb-4 text-gray-700 flex items-center">
+                                <svg class="w-5 h-5 mr-2 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m-14 1v12h12V8H4zm8 8v-4m-4 4h8"></path>
+                                </svg>
+                                训练计划
+                            </h3>
+                            <div id="trainingOutput" class="text-gray-600 whitespace-pre-wrap mb-4"></div>
+                            <div id="scheduleChart" class="h-48 md:h-64"></div>
+                        </div>
+                        <!-- 饮食建议 -->
+                        <div class="card bg-white p-6 rounded-lg shadow-sm fade-in">
+                            <h3 class="text-lg font-medium mb-4 text-gray-700 flex items-center">
+                                <svg class="w-5 h-5 mr-2 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 9.143l-5.714 2.286L13 18l-2.286-6.571L5 9.143l5.714-2.286L13 0z"></path>
+                                </svg>
+                                饮食建议
+                            </h3>
+                            <div id="dietOutput" class="text-gray-600 whitespace-pre-wrap mb-4"></div>
+                            <div id="nutritionChart" class="h-48 md:h-64"></div>
+                        </div>
+                        <!-- 体重对比 -->
+                        <div class="card bg-white p-6 rounded-lg shadow-sm fade-in">
+                            <h3 class="text-lg font-medium mb-4 text-gray-700 flex items-center">
+                                <svg class="w-5 h-5 mr-2 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 6h18M3 12h18M3 18h18"></path>
+                                </svg>
+                                体重对比
+                            </h3>
+                            <div id="weightChart" class="h-48 md:h-64"></div>
+                        </div>
+                    </div>
                 </div>
             </div>
-            <button onclick="calculate()" class="btn-primary w-full text-white p-3 rounded-lg shadow-md">计算</button>
 
-            <!-- 加载动画 -->
-            <div id="loading" class="hidden mt-6">
-                <div class="loading-spinner"></div>
-                <p class="text-center text-gray-600 mt-2">正在生成报告...</p>
+            <!-- 运动知识 -->
+            <div id="knowledgePage" class="hidden max-w-5xl mx-auto bg-white rounded-2xl shadow-2xl p-8">
+                <h2 class="text-2xl font-semibold mb-6 text-gray-800">运动知识</h2>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-6 text-gray-600">
+                    <!-- 热身与拉伸 -->
+                    <div class="card bg-white p-6 rounded-lg shadow-sm border-l-4 border-sky-500 hover:transform hover:-translate-y-1 hover:shadow-lg">
+                        <h3 class="text-lg font-bold text-gray-800 mb-4">热身与拉伸</h3>
+                        <p><span class="font-semibold">简介</span>：热身通过低强度活动提高身体温度和血液循环，拉伸增加肌肉柔韧性，共同预防运动损伤。</p>
+                        <p><span class="font-semibold">建议</span>：运动前进行5-10分钟热身（如慢跑或动态拉伸），运动后进行10分钟静态拉伸，重点拉伸主要肌群（如腿部、背部）。</p>
+                    </div>
+                    <!-- 心率区间 -->
+                    <div class="card bg-white p-6 rounded-lg shadow-sm border-l-4 border-sky-500 hover:transform hover:-translate-y-1 hover:shadow-lg">
+                        <h3 class="text-lg font-bold text-gray-800 mb-4">心率区间</h3>
+                        <p><span class="font-semibold">简介</span>：心率区间反映运动强度，最大心率通常为 220 - 年龄，适宜区间因目标不同而异。</p>
+                        <p><span class="font-semibold">建议</span>：有氧运动保持心率在最大心率的60-80%（约120-160次/分钟，30岁人群），适合减脂和耐力提升；高强度运动可达80-90%。</p>
+                    </div>
+                    <!-- 饮食与恢复 -->
+                    <div class="card bg-white p-6 rounded-lg shadow-sm border-l-4 border-sky-500 hover:transform hover:-translate-y-1 hover:shadow-lg">
+                        <h3 class="text-lg font-bold text-gray-800 mb-4">饮食与恢复</h3>
+                        <p><span class="font-semibold">简介</span>：合理的饮食和充足的休息是运动效果和身体恢复的关键，蛋白质和碳水化合物尤为重要。</p>
+                        <p><span class="font-semibold">建议</span>：运动后30分钟内摄入蛋白质（如鸡蛋、蛋白粉）和碳水化合物（如全麦面包），每日保证7-8小时睡眠。</p>
+                    </div>
+                    <!-- 越野跑 -->
+                    <div class="card bg-white p-6 rounded-lg shadow-sm border-l-4 border-sky-500 hover:transform hover:-translate-y-1 hover:shadow-lg">
+                        <h3 class="text-lg font-bold text-gray-800 mb-4">越野跑</h3>
+                        <p><span class="font-semibold">运动种类</span>：有氧运动、户外耐力运动</p>
+                        <p><span class="font-semibold">适宜时间</span>：30-60分钟</p>
+                        <p><span class="font-semibold">适宜心率</span>：最大心率的60-80%（约120-160次/分钟，30岁人群）</p>
+                        <p><span class="font-semibold">适宜频率</span>：每周2-3次</p>
+                        <p><span class="font-semibold">推荐速度</span>：6-8分钟/公里（视地形调整）</p>
+                        <p><span class="font-semibold">简介</span>：越野跑是在自然环境（如山地、森林）进行的跑步，结合跑步与探险。</p>
+                        <p><span class="font-semibold">益处</span>：增强心肺耐力、锻炼全身肌肉、提高协调性、享受自然风光。</p>
+                        <p><span class="font-semibold">注意事项</span>：选择专业越野跑鞋，注意地形变化避免崴脚，携带水壶并警惕野生动物。</p>
+                        <p><span class="font-semibold">适合人群</span>：有跑步基础、喜欢户外探险的人群。</p>
+                    </div>
+                    <!-- 瑜伽 -->
+                    <div class="card bg-white p-6 rounded-lg shadow-sm border-l-4 border-sky-500 hover:transform hover:-translate-y-1 hover:shadow-lg">
+                        <h3 class="text-lg font-bold text-gray-800 mb-4">瑜伽</h3>
+                        <p><span class="font-semibold">运动种类</span>：柔韧性与平衡运动</p>
+                        <p><span class="font-semibold">适宜时间</span>：20-60分钟</p>
+                        <p><span class="font-semibold">适宜心率</span>：最大心率的50-70%（约100-140次/分钟，30岁人群）</p>
+                        <p><span class="font-semibold">适宜频率</span>：每周3-5次</p>
+                        <p><span class="font-semibold">简介</span>：瑜伽通过体式、呼吸和冥想结合，提升身体柔韧性和精神放松。</p>
+                        <p><span class="font-semibold">益处</span>：改善柔韧性、增强核心力量、缓解压力、促进睡眠。</p>
+                        <p><span class="font-semibold">注意事项</span>：避免过度拉伸，初学者需在教练指导下练习，选择适合自身水平的课程。</p>
+                        <p><span class="font-semibold">适合人群</span>：各年龄段，尤其适合久坐人群和需减压者。</p>
+                    </div>
+                    <!-- 慢跑 -->
+                    <div class="card bg-white p-6 rounded-lg shadow-sm border-l-4 border-sky-500 hover:transform hover:-translate-y-1 hover:shadow-lg">
+                        <h3 class="text-lg font-bold text-gray-800 mb-4">慢跑</h3>
+                        <p><span class="font-semibold">运动种类</span>：有氧运动</p>
+                        <p><span class="font-semibold">适宜时间</span>：20-40分钟</p>
+                        <p><span class="font-semibold">适宜心率</span>：最大心率的60-75%（约120-150次/分钟，30岁人群）</p>
+                        <p><span class="font-semibold">适宜频率</span>：每周3-5次</p>
+                        <p><span class="font-semibold">推荐速度</span>：8-10分钟/公里</p>
+                        <p><span class="font-semibold">简介</span>：慢跑是以轻松步伐进行的低强度跑步，适合长期坚持。</p>
+                        <p><span class="font-semibold">益处</span>：提高心血管健康、促进脂肪燃烧、增强耐力、缓解焦虑。</p>
+                        <p><span class="font-semibold">注意事项</span>：保持正确跑姿（抬头、放松肩膀），选择缓震跑鞋，逐步增加跑量避免受伤。</p>
+                        <p><span class="font-semibold">适合人群</span>：初学者和希望保持健康的人群。</p>
+                    </div>
+                    <!-- 跑步 -->
+                    <div class="card bg-white p-6 rounded-lg shadow-sm border-l-4 border-sky-500 hover:transform hover:-translate-y-1 hover:shadow-lg">
+                        <h3 class="text-lg font-bold text-gray-800 mb-4">跑步</h3>
+                        <p><span class="font-semibold">运动种类</span>：有氧运动</p>
+                        <p><span class="font-semibold">适宜时间</span>：20-60分钟</p>
+                        <p><span class="font-semibold">适宜心率</span>：最大心率的70-85%（约140-170次/分钟，30岁人群）</p>
+                        <p><span class="font-semibold">适宜频率</span>：每周3-4次</p>
+                        <p><span class="font-semibold">推荐速度</span>：5-7分钟/公里</p>
+                        <p><span class="font-semibold">简介</span>：跑步是高强度有氧运动，可在户外或跑步机上进行，包含短跑、长跑等形式。</p>
+                        <p><span class="font-semibold">益处</span>：增强心肺功能、提高代谢率、塑造体型、提升意志力。</p>
+                        <p><span class="font-semibold">注意事项</span>：跑前充分热身，控制速度避免过度疲劳，注意膝盖和脚踝保护。</p>
+                        <p><span class="font-semibold">适合人群</span>：有运动基础、追求高强度训练的人群。</p>
+                    </div>
+                    <!-- 羽毛球 -->
+                    <div class="card bg-white p-6 rounded-lg shadow-sm border-l-4 border-sky-500 hover:transform hover:-translate-y-1 hover:shadow-lg">
+                        <h3 class="text-lg font-bold text-gray-800 mb-4">羽毛球</h3>
+                        <p><span class="font-semibold">运动种类</span>：有氧与敏捷性运动</p>
+                        <p><span class="font-semibold">适宜时间</span>：30-60分钟</p>
+                        <p><span class="font-semibold">适宜心率</span>：最大心率的70-90%（约140-180次/分钟，30岁人群）</p>
+                        <p><span class="font-semibold">适宜频率</span>：每周2-4次</p>
+                        <p><span class="font-semibold">简介</span>：羽毛球是一项需要快速反应和协调性的球类运动，可单人或双人进行。</p>
+                        <p><span class="font-semibold">益处</span>：提高敏捷性、增强上下肢力量、促进社交、改善手眼协调。</p>
+                        <p><span class="font-semibold">注意事项</span>：选择合适的羽毛球拍，注意场地安全，避免快速转身导致膝盖受伤。</p>
+                        <p><span class="font-semibold">适合人群</span>：喜欢竞技和团队合作的人群，各年龄段适用。</p>
+                    </div>
+                    <!-- 太极拳 -->
+                    <div class="card bg-white p-6 rounded-lg shadow-sm border-l-4 border-sky-500 hover:transform hover:-translate-y-1 hover:shadow-lg">
+                        <h3 class="text-lg font-bold text-gray-800 mb-4">太极拳</h3>
+                        <p><span class="font-semibold">运动种类</span>：低强度柔韧性与平衡运动</p>
+                        <p><span class="font-semibold">适宜时间</span>：20-40分钟</p>
+                        <p><span class="font-semibold">适宜心率</span>：最大心率的50-65%（约100-130次/分钟，30岁人群）</p>
+                        <p><span class="font-semibold">适宜频率</span>：每周3-5次</p>
+                        <p><span class="font-semibold">简介</span>：太极拳是中国传统武术，结合慢速动作、深呼吸和冥想，强调身心平衡。</p>
+                        <p><span class="font-semibold">益处</span>：改善平衡能力、增强关节灵活性、降低血压、缓解慢性疼痛。</p>
+                        <p><span class="font-semibold">注意事项</span>：动作需缓慢流畅，避免用力过猛，建议跟随专业老师学习正确姿势。</p>
+                        <p><span class="font-semibold">适合人群</span>：中老年人或需要低强度运动的人群。</p>
+                    </div>
+                </div>
             </div>
 
-            <!-- 输出区域 -->
-            <div id="result" class="mt-8 hidden">
-                <h2 class="text-2xl font-semibold mb-6 text-gray-800">评估报告</h2>
-                <div class="space-y-6">
-                    <!-- 身体状态 -->
-                    <div class="card bg-white p-6 rounded-lg shadow-sm fade-in">
-                        <h3 class="text-lg font-medium mb-4 text-gray-700 flex items-center">
-                            <svg class="w-5 h-5 mr-2 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                            </svg>
-                            身体状态
-                        </h3>
-                        <div id="bodyOutput" class="text-gray-600 whitespace-pre-wrap"></div>
-                    </div>
-                    <!-- 运动风险分析 -->
-                    <div class="card bg-white p-6 rounded-lg shadow-sm fade-in">
-                        <h3 class="text-lg font-medium mb-4 text-gray-700 flex items-center">
-                            <svg class="w-5 h-5 mr-2 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
-                            </svg>
-                            运动风险分析
-                        </h3>
-                        <div id="riskOutput" class="text-gray-600"></div>
-                    </div>
-                    <!-- 训练计划 -->
-                    <div class="card bg-white p-6 rounded-lg shadow-sm fade-in">
-                        <h3 class="text-lg font-medium mb-4 text-gray-700 flex items-center">
-                            <svg class="w-5 h-5 mr-2 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m-14 1v12h12V8H4zm8 8v-4m-4 4h8"></path>
-                            </svg>
-                            训练计划
-                        </h3>
-                        <div id="trainingOutput" class="text-gray-600 whitespace-pre-wrap mb-4"></div>
-                        <div id="scheduleChart" class="h-48"></div>
-                    </div>
-                    <!-- 饮食建议 -->
-                    <div class="card bg-white p-6 rounded-lg shadow-sm fade-in">
-                        <h3 class="text-lg font-medium mb-4 text-gray-700 flex items-center">
-                            <svg class="w-5 h-5 mr-2 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 9.143l-5.714 2.286L13 18l-2.286-6.571L5 9.143l5.714-2.286L13 0z"></path>
-                            </svg>
-                            饮食建议
-                        </h3>
-                        <div id="dietOutput" class="text-gray-600 whitespace-pre-wrap mb-4"></div>
-                        <div id="nutritionChart" class="h-48"></div>
-                    </div>
-                    <!-- 体重对比 -->
-                    <div class="card bg-white p-6 rounded-lg shadow-sm fade-in">
-                        <h3 class="text-lg font-medium mb-4 text-gray-700 flex items-center">
-                            <svg class="w-5 h-5 mr-2 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 6h18M3 12h18M3 18h18"></path>
-                            </svg>
-                            体重对比
-                        </h3>
-                        <div id="weightChart" class="h-48"></div>
-                    </div>
+            <!-- 身体信息管理 -->
+            <div id="recordsPage" class="hidden max-w-5xl mx-auto bg-white rounded-2xl shadow-2xl p-8">
+                <h2 class="text-2xl font-semibold mb-6 text-gray-800">身体信息管理</h2>
+                <div id="healthRecords" class="space-y-4"></div>
+                <div class="mt-8">
+                    <h3 class="text-lg font-medium mb-4 text-gray-700">健康趋势图</h3>
+                    <div id="heartRateChart" class="h-48 md:h-64 mb-4"></div>
+                    <div id="bloodPressureChart" class="h-48 md:h-64"></div>
                 </div>
             </div>
         </div>
     </div>
 
     <!-- 运动风险问卷弹窗 -->
-    <div id="surveyModal" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center hidden">
+    <div id="surveyModal" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center">
         <div class="bg-white rounded-2xl p-8 max-w-md w-full shadow-2xl relative">
-            <button onclick="document.getElementById('surveyModal').classList.add('hidden')" class="absolute top-4 right-4 text-gray-500 hover:text-gray-700">
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-                </svg>
-            </button>
             <h2 class="text-xl font-bold mb-4 text-gray-800">运动风险水平问卷</h2>
+            <p class="text-gray-600 mb-4">请完成以下问卷以进入健康评估系统</p>
             <div class="space-y-4">
                 <div>
-                    <label class="block mb-1 text-sm font-medium text-gray-700">1. 你有运动相关的历史伤病吗？</label>
-                    <select id="q1" class="w-full p-2 border rounded-lg">
+                    <label for="q1" class="block mb-1 text-sm font-medium text-gray-700">1. 你有运动相关的历史伤病吗？</label>
+                    <select id="q1" class="w-full p-2 border rounded-lg" aria-label="选择运动伤病情况">
                         <option value="0">没有</option>
                         <option value="1">有，轻微</option>
                         <option value="2">有，较严重</option>
                     </select>
                 </div>
                 <div>
-                    <label class="block mb-1 text-sm font-medium text-gray-700">2. 最近一周的疲劳程度（1-5 分，5 分最高）？</label>
-                    <input id="q2" type="number" min="1" max="5" class="w-full p-2 border rounded-lg" placeholder="1-5">
+                    <label for="q2" class="block mb-1 text-sm font-medium text-gray-700">2. 最近一周的疲劳程度（1-5 分，5 分最高）？</label>
+                    <input id="q2" type="number" min="1" max="5" aria-describedby="q2-error" class="w-full p-2 border rounded-lg" placeholder="1-5" oninput="validateInput(this)">
+                    <p id="q2-error" class="error-message hidden"></p>
                 </div>
                 <div>
-                    <label class="block mb-1 text-sm font-medium text-gray-700">3. 你的睡眠质量如何（1-5 分，5 分最好）？</label>
-                    <input id="q3" type="number" min="1" max="5" class="w-full p-2 border rounded-lg" placeholder="1-5">
+                    <label for="q3" class="block mb-1 text-sm font-medium text-gray-700">3. 你的睡眠质量如何（1-5 分，5 分最好）？</label>
+                    <input id="q3" type="number" min="1" max="5" aria-describedby="q3-error" class="w-full p-2 border rounded-lg" placeholder="1-5" oninput="validateInput(this)">
+                    <p id="q3-error" class="error-message hidden"></p>
                 </div>
                 <div>
-                    <label class="block mb-1 text-sm font-medium text-gray-700">4. 你是否有高强度运动经验？</label>
-                    <select id="q4" class="w-full p-2 border rounded-lg">
+                    <label for="q4" class="block mb-1 text-sm font-medium text-gray-700">4. 你是否有高强度运动经验？</label>
+                    <select id="q4" class="w-full p-2 border rounded-lg" aria-label="选择高强度运动经验">
                         <option value="0">没有</option>
                         <option value="1">偶尔</option>
                         <option value="2">经常</option>
@@ -227,9 +491,13 @@
             const surveyModal = document.getElementById("surveyModal");
             if (surveyModal) {
                 surveyModal.classList.remove("hidden");
-            } else {
-                console.error("Survey modal element not found");
             }
+            // 默认隐藏所有页面，直到问卷提交
+            const pages = ["profilePage", "assessmentPage", "knowledgePage", "recordsPage"];
+            pages.forEach(id => {
+                const page = document.getElementById(id);
+                if (page) page.classList.add("hidden");
+            });
         });
 
         // 粒子背景
@@ -239,7 +507,7 @@
         canvas.height = window.innerHeight;
 
         let particlesArray = [];
-        const numberOfParticles = 50;
+        const numberOfParticles = /Mobi|Android/i.test(navigator.userAgent) ? 20 : 50;
 
         class Particle {
             constructor() {
@@ -286,6 +554,18 @@
 
         initParticles();
         animateParticles();
+
+        // 窗口大小调整时更新画布
+        window.addEventListener("resize", () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
+
+        // 侧边栏切换（移动端）
+        document.getElementById("sidebarToggle").addEventListener("click", () => {
+            const sidebar = document.getElementById("sidebar");
+            sidebar.classList.toggle("sidebar-open");
+        });
     </script>
 </body>
 </html>
